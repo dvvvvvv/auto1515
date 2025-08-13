@@ -1,12 +1,10 @@
 use bon::Builder;
+use cookie::Cookie;
 use derivative::Derivative;
-use reqwest::{
-    Client,
-    header::{COOKIE, HeaderMap, HeaderValue},
-};
+use reqwest::{Client, header::COOKIE};
 use tracing::instrument;
 
-use crate::game::Game;
+use crate::{game::Game, user::User};
 
 #[derive(Derivative, Builder)]
 #[derivative(Debug)]
@@ -29,6 +27,7 @@ fn applier_default_http_client() -> reqwest::Client {
 #[derivative(Debug)]
 pub struct ApplyGameCommand {
     pub game: Game,
+    pub user: User,
 }
 
 impl Applier {
@@ -36,18 +35,44 @@ impl Applier {
     pub async fn apply(&self, command: ApplyGameCommand) -> Result<(), ApplyError> {
         let url = format!("{}/15/src/frm42_GameAcceptIntro.php", &self.origin);
 
+        let user = &command.user;
+
+        let cookies = vec![
+            Cookie::new("user_1515", "1515"),
+            Cookie::new("user_15id", &user.id),
+            Cookie::new("user_15area", &user.area),
+            Cookie::new("user_15jung", &user.jung),
+            Cookie::new("user_15name", &user.name),
+            Cookie::new("user_15nick", &user.nickname),
+            Cookie::new("user_15sido", &user.sido),
+            Cookie::new("user_15team", &user.team),
+        ];
+
         let yy = command.game.year.to_string();
         let seq = command.game.sequence.to_string();
         let params = [
             ("pw2", "65260"),
-            ("user_sido1", "경기"),
-            ("user_team1", "양주 무호정"),
+            ("user_sido1", &user.sido),
+            ("user_team1", &user.team),
             ("pw1", "65260"),
             ("yy", &yy),
             ("seq", &seq),
         ];
 
-        let res = self.http_client.post(url).form(&params).send().await?;
+        let res = self
+            .http_client
+            .post(url)
+            .header(
+                COOKIE,
+                cookies
+                    .iter()
+                    .map(|cookie| cookie.encoded().to_string())
+                    .collect::<Vec<_>>()
+                    .join("; "),
+            )
+            .form(&params)
+            .send()
+            .await?;
 
         let body = res.text().await?;
         // info!(body);
